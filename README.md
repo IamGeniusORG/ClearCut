@@ -64,4 +64,6 @@ streamlit run app.py
 ---
 *Note: On the first run, the app will download the U2-Net model weights (approx. 170MB). This is a one-time process.*
 
+This is the desktop verion of the page you can run it in your mobile phones as well.
+
 <img width="1207" height="742" alt="image" src="https://github.com/user-attachments/assets/36da3e04-be40-4ea9-9ed3-18ec326885c3" />
