@@ -1,69 +1,61 @@
-# AI-Powered Background Eraser ✂️
+# ClearCut — Enter. Cut. Leave.
 
-A robust, batch-processing web application built with Python and Streamlit to remove backgrounds from images using state-of-the-art Deep Learning models.
+A custom-built, batch AI background removal studio powered by **Next.js**, **Tailwind CSS**, and **on-device neural segmentation** (`@imgly/background-removal` + `onnxruntime-web`), designed for zero-sleep deployment on **Vercel**.
 
-## 🚀 Tech Stack
-- **Python 3.9+**: Core programming language.
-- **Streamlit**: Modern UI framework for data science and AI applications.
-- **rembg**: A high-performance library for background removal based on ONNX Runtime.
-- **Pillow (PIL)**: Python Imaging Library for image manipulation and format handling.
-- **U2-Net**: The underlying neural network architecture for salient object detection.
+## Why Browser-Based AI on Vercel?
 
-## 🧠 AI Architecture: How it Works
-This application leverages the **U2-Net (Universal U-Square Net)** architecture, specifically designed for **Salient Object Detection (SOD)**. Unlike traditional U-Net models, U2-Net is built using **Nested U-Structure** blocks (RSU - Residual U-blocks).
+- **Never Sleeps**: Static/Edge-ready Next.js frontend on Vercel with zero cold-start sleeping screens.
+- **100% Private & Unlimited Batch Size**: Images are processed locally in your browser using WebGPU (with automatic WASM CPU fallback)—no files are uploaded to a backend server.
+- **Zero Backend GPU Costs**: Neural inference runs directly on the user's device.
 
-### Key Features of the U2-Net Model:
-1.  **Multi-Scale Feature Extraction**: The RSU blocks allow the model to capture both high-level contextual information and low-level fine-grained details (like hair strands) simultaneously.
-2.  **Probability Mapping**: The model outputs a probability map (alpha matte). Each pixel is assigned a value from 0 to 1, representing the likelihood of it being the foreground object.
-3.  **Refined Edges**: By processing features at multiple scales without reducing resolution significantly, the model achieves superior edge detection compared to standard segmentation models.
-4.  **Automatic Saliency**: The AI automatically identifies the "salient" or most important object in the frame, requiring no manual bounding boxes or "green screen" backgrounds.
+## Tech Stack
 
-## 🛠️ Local Installation
+- **Next.js (App Router)** & **React 19**
+- **TypeScript** & **Tailwind CSS v4**
+- **`@imgly/background-removal`** + **`onnxruntime-web`** (ISNet ONNX models via WebGPU / WASM)
+- **`jszip`** for client-side batch `.zip` packaging
+- **`lucide-react`** for studio iconography
 
-Follow these steps to set up the project on your local machine:
+## Features
 
-### 1. Clone the Workspace
-Ensure you are in the project directory:
+- **Drag-and-Drop, Multi-Select & Clipboard Paste (`Ctrl+V`)** for JPG, PNG, and WebP images
+- **3 AI Model Tiers**: Fast (`isnet_quint8`, ~40 MB), Balanced (`isnet_fp16`, ~80 MB), and Max Quality (`isnet`, ~160 MB)
+- **Compute Selection**: WebGPU hardware acceleration with automatic WASM CPU fallback
+- **Instant Backdrop & Format Switching**: Switch between Transparent, Solid Color presets, or a custom color picker—and export as PNG, WebP, or JPG—without re-running AI inference
+- **Interactive Before/After Split Inspector**: Drag-to-compare original vs. cutout at high resolution
+- **Batch ZIP & Single-Image Downloads**: Deduplicated filenames (`_no_bg.png`, `_no_bg_2.png`, etc.)
+
+## Local Development
+
 ```bash
-cd "AI TOOLS PROJECT"
+npm install
+npm run dev
 ```
 
-### 2. Create a Virtual Environment (Recommended)
+Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+> Note: On the first run for a selected model tier, the browser downloads and caches the ONNX model weights and WASM runtime files locally.
+
+## Deploying to Vercel
+
+1. Push this repository to GitHub, GitLab, or Bitbucket.
+2. Import the project in [Vercel](https://vercel.com/new) (framework preset: **Next.js**).
+3. Click **Deploy** — no environment variables or Python build steps are required.
+
+Or deploy directly via CLI:
+
 ```bash
-python -m venv venv
-# On Windows:
-.\venv\Scripts\activate
-# On macOS/Linux:
-source venv/bin/activate
+npx vercel --prod
 ```
 
-### 3. Install Dependencies
-```bash
-pip install -r requirements.txt
-```
+## Project Structure
 
-## 🏃 How to Run the App
-
-Launch the Streamlit server with the following command:
-```bash
-streamlit run app.py
-```
-
-### Usage Instructions:
-1.  **Upload**: Use the sidebar to upload one or multiple images (JPG, JPEG, PNG).
-2.  **Process**: Click the **"Process Batch"** button. The AI will initialize a session and loop through your files.
-3.  **Preview**: View processed images in a responsive grid layout as they are completed.
-4.  **Download**: Once finished, a single `.zip` file containing all transparent PNGs will be available for download in the sidebar.
-
-## 📁 Project Structure
-- `app.py`: The Streamlit web application.
-- `background_remover.py`: Standalone CLI script for single-image processing.
-- `requirements.txt`: List of necessary Python libraries.
-- `README.md`: Technical documentation.
-
----
-*Note: On the first run, the app will download the U2-Net model weights (approx. 170MB). This is a one-time process.*
-
-This is the desktop verion of the page you can run it in your mobile phones as well.
-
-<img width="1207" height="742" alt="image" src="https://github.com/user-attachments/assets/36da3e04-be40-4ea9-9ed3-18ec326885c3" />
+- `src/app/icon.svg` — ClearCut minimal monogram badge favicon
+- `src/app/layout.tsx` & `src/app/globals.css` — App shell, typography, and dark studio styling
+- `src/app/page.tsx` — Entry page rendering the studio workspace
+- `src/components/ClearCutLogo.tsx` — Minimal monogram badge logo component
+- `src/components/StudioWorkspace.tsx` — Custom batch processing UI, queue grid, and controls
+- `src/components/CompareSlider.tsx` — Interactive before/after split comparison modal
+- `src/lib/bg-remover.ts` — Browser AI segmentation runner and canvas backdrop compositor
+- `src/lib/zip-export.ts` — Deduplicated batch ZIP generator and formatting helpers
+- `next.config.ts` — Configures `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy: credentialless` headers for multi-threaded WASM performance

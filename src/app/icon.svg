@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none">
+  <defs>
+    <linearGradient id="cc-badge-grad" x1="4" y1="2" x2="36" y2="38" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#34d399" />
+      <stop offset="100%" stop-color="#0d9488" />
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="36" height="36" rx="10" fill="url(#cc-badge-grad)" />
+  <rect x="2.5" y="2.5" width="35" height="35" rx="9.5" stroke="#ffffff" stroke-opacity="0.25" />
+  <path
+    d="M27.07 12.93A10 10 0 1 0 27.07 27.07"
+    stroke="#09090b"
+    stroke-width="3.8"
+    stroke-linecap="round"
+  />
+  <path
+    d="M23.25 16.75A4.6 4.6 0 1 0 23.25 23.25"
+    stroke="#09090b"
+    stroke-width="3.4"
+    stroke-linecap="round"
+  />
+</svg>
