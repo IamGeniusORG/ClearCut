@@ -1,37 +1,64 @@
 <div align="center">
 
-# ClearCut
+<a href="https://clearcut-khaki.vercel.app/">
+  <img src="src/app/icon.svg" alt="ClearCut Logo" width="76" height="76" />
+</a>
 
-**Enter. Cut. Leave.**
+<h1>ClearCut</h1>
 
-A fast, privacy-first batch AI background remover that runs directly in the browser—built with **Next.js** and **on-device neural segmentation** for zero-sleep deployment on **Vercel**.
+<p><strong>Enter. Cut. Leave.</strong></p>
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FIamGeniusORG%2FBACKGROUND-REMOVER)
+<p>
+  A fast, privacy-first batch AI background remover that runs directly in your browser—built with <strong>Next.js</strong> and <strong>on-device neural segmentation</strong> for zero-sleep hosting on <strong>Vercel</strong>.
+</p>
+
+<p>
+  <a href="https://clearcut-khaki.vercel.app/">
+    <img src="https://img.shields.io/badge/Launch_ClearCut-Live_App-10b981?style=for-the-badge&logo=vercel&logoColor=white" alt="Launch ClearCut Live App" />
+  </a>
+  &nbsp;
+  <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FIamGeniusORG%2FBACKGROUND-REMOVER">
+    <img src="https://img.shields.io/badge/Deploy_Your_Own-Vercel-18181b?style=for-the-badge&logo=vercel&logoColor=white" alt="Deploy with Vercel" />
+  </a>
+</p>
+
+<p>
+  <img src="https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=nextdotjs" alt="Next.js 16" />
+  <img src="https://img.shields.io/badge/React-19-20232a?style=flat-square&logo=react" alt="React 19" />
+  <img src="https://img.shields.io/badge/TypeScript-Strict-3178c6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Inference-WebGPU%20%2F%20WASM-10b981?style=flat-square" alt="On-Device WebGPU and WASM" />
+</p>
 
 </div>
 
 ---
 
-## Overview
+## Quick Usage
 
-**ClearCut** replaces slow, sleeping server apps with an instant, zero-backend studio. Drop one image or an entire batch, let the browser automatically isolate subjects using hardware-accelerated WebGPU (with automatic WASM CPU fallback), tweak backgrounds or formats in real time, and export everything as a single `.zip`.
+Use the live app immediately with no sign-up or installation: **[https://clearcut-khaki.vercel.app/](https://clearcut-khaki.vercel.app/)**
 
-- **Always Awake:** Static-first Next.js App Router architecture—no cold starts, no sleeping servers, no upload payload limits.
-- **100% On-Device Privacy:** Your images never leave your browser. Cutouts and **Session History** live strictly in tab memory and clear automatically when you refresh or close the tab.
-- **Zero-Jargon Workflow:** Automatic queue processing on drop/paste, smart hardware selection under the hood, and instant non-destructive backdrop/format switching.
+1. **Enter** — Drag & drop, browse, or paste (`Ctrl+V` / `Cmd+V`) one photo or a full batch (`JPG`, `PNG`, `WebP`).
+2. **Cut** — Background removal starts automatically in your browser. Swap **Transparent** or **Solid Color** backdrops, switch **PNG / WebP / JPG**, or inspect edges with the **Compare** slider.
+3. **Leave** — Save individual cutouts or click **Download All** for a single `.zip`. Nothing is uploaded to any server.
 
 ---
 
-## Key Features
+## Why ClearCut?
 
-- **Effortless Input:** Drag & drop, multi-file browse, or paste directly from clipboard (`Ctrl+V` / `Cmd+V`) for **JPG**, **PNG**, and **WebP** images.
-- **Automatic Batch Queue:** Processing begins immediately upon adding files, with live per-image progress and queue stop/resume controls.
-- **Instant Backdrop & Format Compositing:** Switch between **Transparent**, solid presets (**White**, **Black**, **Soft Gray**, **Cobalt**), or any **Custom Hex Color**, and export as **PNG**, **WebP**, or **JPG** without re-running AI inference.
-- **Cutout Precision Presets:** Choose **Fast**, **Balanced** (default), or **High Detail** from the toolbar quality menu.
-- **Interactive Split Inspector:** Click any processed card to compare **Original vs. Cutout** with a draggable split slider or toggle full-view modes.
-- **In-Memory Session History:** Click **ClearCut** anytime to return to the main menu while keeping all processed cutouts accessible via **History** in the header until the tab is refreshed or closed.
-- **Deduplicated Batch Export:** Download individual files or package all cutouts into `clearcut_batch.zip` / `clearcut_history.zip` with collision-safe filenames (`_no_bg.png`, `_no_bg_2.png`, etc.).
-- **Built-In Social Previews:** Includes custom-rendered Open Graph (`/opengraph-image`) and Twitter (`/twitter-image`) cards plus SVG favicon (`/icon.svg`).
+- **Always Awake:** Static-first Next.js App Router architecture—no cold starts, no sleeping servers, and no upload size caps.
+- **100% On-Device Privacy:** Images are processed locally via hardware-accelerated WebGPU (with automatic WASM CPU fallback). Cutouts and **Session History** live strictly in tab memory and clear automatically when you refresh or close the tab.
+- **Zero-Jargon Studio:** Smart defaults handle compute selection automatically while giving power users **Fast**, **Balanced**, and **High Detail** precision presets when needed.
+
+---
+
+## Features
+
+- **Automatic Batch Queue:** Processing starts immediately upon adding files, with live per-image progress and stop/resume controls.
+- **Instant Backdrop & Format Compositing:** Switch between **Transparent**, solid presets (**White**, **Black**, **Soft Gray**, **Cobalt**), or a **Custom Hex Color**, and export as **PNG**, **WebP**, or **JPG** without re-running AI inference.
+- **Interactive Split Inspector:** Click any processed card to compare **Original vs. Cutout** using a draggable split divider.
+- **In-Memory Session History:** Click **ClearCut** anytime to return to the main menu while keeping processed cutouts accessible in **History** until the tab is refreshed or closed.
+- **Deduplicated Batch Export:** Download single files or package everything into `clearcut_batch.zip` / `clearcut_history.zip` with collision-safe filenames (`_no_bg.png`, `_no_bg_2.png`, etc.).
+- **Built-In Social Previews:** Custom-rendered Open Graph (`/opengraph-image`) and Twitter (`/twitter-image`) cards plus SVG favicon (`/icon.svg`).
 
 ---
 
@@ -47,13 +74,13 @@ A fast, privacy-first batch AI background remover that runs directly in the brow
 
 ---
 
-## Getting Started
+## Local Development
 
 ### Prerequisites
 
 - **Node.js 20+** and **npm**
 
-### Local Development
+### Run Locally
 
 ```bash
 git clone https://github.com/IamGeniusORG/BACKGROUND-REMOVER.git
@@ -77,20 +104,11 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
-## Deploying to Vercel
+## Deploying Your Own Instance
 
-### Option 1: GitHub Integration (Recommended)
-
-1. Go to **[vercel.com/new](https://vercel.com/new)** and import **`IamGeniusORG/BACKGROUND-REMOVER`**.
+1. Import **`IamGeniusORG/BACKGROUND-REMOVER`** in **[vercel.com/new](https://vercel.com/new)**.
 2. Keep the default **Next.js** framework preset (no environment variables required).
-3. Click **Deploy**.
-
-### Option 2: Vercel CLI
-
-```bash
-npx vercel login
-npx vercel --prod
-```
+3. Click **Deploy**, or run `npx vercel --prod` from the project root.
 
 ---
 
