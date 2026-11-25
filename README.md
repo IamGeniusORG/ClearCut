@@ -16,10 +16,6 @@
   <a href="https://clearcut-khaki.vercel.app/">
     <img src="https://img.shields.io/badge/Launch_ClearCut-Live_App-10b981?style=for-the-badge&logo=vercel&logoColor=white" alt="Launch ClearCut Live App" />
   </a>
-  &nbsp;
-  <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FIamGeniusORG%2FBACKGROUND-REMOVER">
-    <img src="https://img.shields.io/badge/Deploy_Your_Own-Vercel-18181b?style=for-the-badge&logo=vercel&logoColor=white" alt="Deploy with Vercel" />
-  </a>
 </p>
 
 <p>
