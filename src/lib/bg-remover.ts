@@ -130,6 +130,97 @@ export async function prepareImageForProcessing(file: File): Promise<{
   }
 }
 
+// --- Background Web Worker management (prevents UI thread freeze during AI inference) ---
+type WorkerResponse =
+  | { type: "preloaded"; id: string }
+  | { type: "preload-error"; id: string; message: string }
+  | { type: "progress"; id: string; percent: number; stage: string }
+  | {
+      type: "done";
+      id: string;
+      blob: Blob;
+      usedDevice: ComputeDevice;
+      durationMs: number;
+    }
+  | { type: "error"; id: string; message: string };
+
+interface PendingTask {
+  onProgress?: (percent: number, stage: string) => void;
+  resolve: (value: {
+    blob: Blob;
+    usedDevice: ComputeDevice;
+    durationMs: number;
+  }) => void;
+  reject: (reason?: unknown) => void;
+}
+
+let sharedWorker: Worker | null = null;
+let workerUnavailable = false;
+const pendingSegments = new Map<string, PendingTask>();
+
+function canUseBackgroundWorker(): boolean {
+  return (
+    !workerUnavailable &&
+    typeof window !== "undefined" &&
+    typeof Worker !== "undefined" &&
+    typeof OffscreenCanvas !== "undefined"
+  );
+}
+
+function getOrCreateWorker(): Worker | null {
+  if (!canUseBackgroundWorker()) return null;
+  if (sharedWorker) return sharedWorker;
+
+  try {
+    const worker = new Worker(
+      new URL("../workers/bg-remover.worker.ts", import.meta.url),
+      { type: "module" }
+    );
+
+    worker.addEventListener(
+      "message",
+      (event: MessageEvent<WorkerResponse>) => {
+        const msg = event.data;
+        if (msg.type === "preloaded" || msg.type === "preload-error") {
+          return;
+        }
+        const task = pendingSegments.get(msg.id);
+        if (!task) return;
+
+        if (msg.type === "progress") {
+          task.onProgress?.(msg.percent, msg.stage);
+        } else if (msg.type === "done") {
+          pendingSegments.delete(msg.id);
+          task.resolve({
+            blob: msg.blob,
+            usedDevice: msg.usedDevice,
+            durationMs: msg.durationMs,
+          });
+        } else if (msg.type === "error") {
+          pendingSegments.delete(msg.id);
+          task.reject(new Error(msg.message));
+        }
+      }
+    );
+
+    worker.addEventListener("error", () => {
+      workerUnavailable = true;
+      sharedWorker = null;
+      for (const [id, task] of pendingSegments.entries()) {
+        pendingSegments.delete(id);
+        task.reject(new Error("WORKER_FAILED"));
+      }
+    });
+
+    sharedWorker = worker;
+    return worker;
+  } catch {
+    workerUnavailable = true;
+    return null;
+  }
+}
+
+// --- Main-thread fallback (used only if Worker / OffscreenCanvas is unsupported) ---
 let configuredCpuLogging = false;
 let configuredGpuLogging = false;
 
@@ -169,6 +260,17 @@ export async function preloadSegmentationModel(
   model: ModelQuality
 ): Promise<void> {
   const device = getPreferredComputeDevice();
+  const worker = getOrCreateWorker();
+  if (worker) {
+    worker.postMessage({
+      type: "preload",
+      id: crypto.randomUUID(),
+      model,
+      device,
+    });
+    return;
+  }
+
   await configureOnnxLogging(device);
   const { preload } = await import("@imgly/background-removal");
 
@@ -193,17 +295,17 @@ export async function preloadSegmentationModel(
           },
         });
       } catch {
-        // Non-fatal: actual segmentation handles retries and errors cleanly
+        // Non-fatal
       }
     }
   }
 }
 
-export async function runSegmentation(
+async function runSegmentationOnMainThread(
   file: File,
+  targetDevice: ComputeDevice,
   options: SegmentationOptions
 ): Promise<{ blob: Blob; usedDevice: ComputeDevice; durationMs: number }> {
-  const targetDevice = options.device ?? getPreferredComputeDevice();
   await configureOnnxLogging(targetDevice);
   const { removeBackground } = await import("@imgly/background-removal");
   const startedAt = performance.now();
@@ -233,7 +335,6 @@ export async function runSegmentation(
       durationMs: performance.now() - startedAt,
     };
   } catch (err) {
-    // Gracefully fall back to WASM CPU if WebGPU fails on this browser/GPU
     if (targetDevice === "gpu") {
       options.onProgress?.(5, "Switching to CPU engine");
       const blob = await removeBackground(file, makeConfig("cpu"));
@@ -245,6 +346,42 @@ export async function runSegmentation(
     }
     throw err;
   }
+}
+
+export async function runSegmentation(
+  file: File,
+  options: SegmentationOptions
+): Promise<{ blob: Blob; usedDevice: ComputeDevice; durationMs: number }> {
+  const targetDevice = options.device ?? getPreferredComputeDevice();
+  const worker = getOrCreateWorker();
+
+  if (worker) {
+    try {
+      return await new Promise((resolve, reject) => {
+        const id = crypto.randomUUID();
+        pendingSegments.set(id, {
+          onProgress: options.onProgress,
+          resolve,
+          reject,
+        });
+        worker.postMessage({
+          type: "segment",
+          id,
+          file,
+          model: options.model,
+          device: targetDevice,
+        });
+      });
+    } catch (err) {
+      if (err instanceof Error && err.message === "WORKER_FAILED") {
+        // Fall through cleanly to main-thread fallback if browser blocks module worker
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  return runSegmentationOnMainThread(file, targetDevice, options);
 }
 
 function getCacheKey(
@@ -278,35 +415,53 @@ export async function renderCompositeBlob(
 
   const bitmap = await createImageBitmap(cutoutBlob);
   try {
-    const canvas = document.createElement("canvas");
-    canvas.width = bitmap.width;
-    canvas.height = bitmap.height;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      throw new Error("Canvas 2D context unavailable.");
+    let encoded: Blob | null = null;
+
+    if (typeof OffscreenCanvas !== "undefined") {
+      const offscreen = new OffscreenCanvas(bitmap.width, bitmap.height);
+      const ctx = offscreen.getContext("2d");
+      if (ctx) {
+        if (background.mode === "color" || format === "image/jpeg") {
+          ctx.fillStyle =
+            background.mode === "color" ? background.color : "#ffffff";
+          ctx.fillRect(0, 0, offscreen.width, offscreen.height);
+        }
+        ctx.drawImage(bitmap, 0, 0);
+        encoded = await offscreen.convertToBlob({ type: format, quality });
+      }
     }
 
-    // JPEG does not support alpha transparency; fill with chosen color or white
-    if (background.mode === "color" || format === "image/jpeg") {
-      ctx.fillStyle = background.mode === "color" ? background.color : "#ffffff";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (!encoded) {
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        throw new Error("Canvas 2D context unavailable.");
+      }
+
+      if (background.mode === "color" || format === "image/jpeg") {
+        ctx.fillStyle =
+          background.mode === "color" ? background.color : "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+
+      ctx.drawImage(bitmap, 0, 0);
+
+      encoded = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(
+          (result) => {
+            if (result) {
+              resolve(result);
+            } else {
+              reject(new Error("Failed to encode output image."));
+            }
+          },
+          format,
+          quality
+        );
+      });
     }
-
-    ctx.drawImage(bitmap, 0, 0);
-
-    const encoded = await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob(
-        (result) => {
-          if (result) {
-            resolve(result);
-          } else {
-            reject(new Error("Failed to encode output image."));
-          }
-        },
-        format,
-        quality
-      );
-    });
 
     if (!perCutoutCache) {
       perCutoutCache = new Map<string, Blob>();

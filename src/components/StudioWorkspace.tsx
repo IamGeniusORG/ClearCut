@@ -19,6 +19,7 @@ import {
   Square,
   Trash2,
   UploadCloud,
+  X,
   XCircle,
 } from "lucide-react";
 import { ClearCutLogo } from "@/components/ClearCutLogo";
@@ -696,10 +697,10 @@ export function StudioWorkspace() {
     PRECISION_OPTIONS.find((opt) => opt.id === model)?.label ?? "Balanced";
 
   const renderBackdropAndFormatControls = (includeQuality: boolean) => (
-    <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
       {/* Left Group: Backdrop + Export Format */}
-      <div className="flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium text-zinc-400">Background</span>
           <div className="flex items-center gap-1.5 rounded-xl border border-zinc-800 bg-zinc-950 p-1">
             <button
@@ -820,7 +821,7 @@ export function StudioWorkspace() {
 
       {/* Right Group: Workspace-only Controls */}
       {includeQuality && (
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="relative" ref={settingsPopoverRef}>
             <button
               type="button"
@@ -832,55 +833,71 @@ export function StudioWorkspace() {
             </button>
 
             {settingsOpen && (
-              <div className="absolute right-0 z-20 mt-2 w-64 rounded-2xl border border-zinc-800 bg-zinc-950 p-2 shadow-2xl">
-                <p className="px-2 py-1 text-[11px] font-semibold tracking-wider text-zinc-400 uppercase">
-                  Cutout Precision
-                </p>
-                <div className="mt-1 flex flex-col gap-1">
-                  {PRECISION_OPTIONS.map((opt) => {
-                    const selected = model === opt.id;
-                    return (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => handlePrecisionChange(opt.id)}
-                        className={`flex items-start justify-between gap-2 rounded-xl px-2.5 py-2 text-left transition ${
-                          selected
-                            ? "bg-emerald-500/10 text-emerald-300"
-                            : "text-zinc-200 hover:bg-zinc-900"
-                        }`}
-                      >
-                        <div>
-                          <p className="text-xs font-semibold">{opt.label}</p>
-                          <p className="mt-0.5 text-[11px] text-zinc-400">
-                            {opt.hint}
-                          </p>
-                        </div>
-                        {selected && (
-                          <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" />
-                        )}
-                      </button>
-                    );
-                  })}
+              <>
+                <div
+                  className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs sm:hidden"
+                  onClick={() => setSettingsOpen(false)}
+                />
+                <div className="fixed inset-x-3 bottom-3 z-50 rounded-2xl border border-zinc-800 bg-zinc-950 p-3 shadow-2xl sm:absolute sm:inset-auto sm:top-full sm:right-0 sm:z-20 sm:mt-2 sm:w-64 sm:p-2">
+                  <div className="flex items-center justify-between px-2 py-1">
+                    <p className="text-[11px] font-semibold tracking-wider text-zinc-400 uppercase">
+                      Cutout Precision
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setSettingsOpen(false)}
+                      aria-label="Close precision menu"
+                      className="rounded-md p-1 text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200 sm:hidden"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  <div className="mt-1 flex flex-col gap-1">
+                    {PRECISION_OPTIONS.map((opt) => {
+                      const selected = model === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => handlePrecisionChange(opt.id)}
+                          className={`flex items-start justify-between gap-2 rounded-xl px-2.5 py-2 text-left transition ${
+                            selected
+                              ? "bg-emerald-500/10 text-emerald-300"
+                              : "text-zinc-200 hover:bg-zinc-900"
+                          }`}
+                        >
+                          <div>
+                            <p className="text-xs font-semibold">{opt.label}</p>
+                            <p className="mt-0.5 text-[11px] text-zinc-400">
+                              {opt.hint}
+                            </p>
+                          </div>
+                          {selected && (
+                            <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {stats.done > 0 && !isProcessing && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSettingsOpen(false);
+                        handleReprocessAll();
+                      }}
+                      className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900 py-2 text-xs font-medium text-zinc-200 transition hover:border-zinc-700 sm:py-1.5"
+                    >
+                      <RotateCw className="h-3 w-3" />
+                      Re-apply to All Images
+                    </button>
+                  )}
                 </div>
-                {stats.done > 0 && !isProcessing && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSettingsOpen(false);
-                      handleReprocessAll();
-                    }}
-                    className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900 py-1.5 text-xs font-medium text-zinc-200 transition hover:border-zinc-700"
-                  >
-                    <RotateCw className="h-3 w-3" />
-                    Re-apply to All Images
-                  </button>
-                )}
-              </div>
+              </>
             )}
           </div>
 
-          <div className="inline-flex rounded-xl border border-zinc-800 bg-zinc-950 p-0.5 text-xs">
+          <div className="inline-flex max-w-full overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-950 p-0.5 text-xs">
             {(
               [
                 { id: "all", label: `All (${stats.total})` },
@@ -897,7 +914,7 @@ export function StudioWorkspace() {
                 key={tab.id}
                 type="button"
                 onClick={() => setFilterTab(tab.id as FilterTab)}
-                className={`rounded-lg px-2.5 py-1 font-medium transition ${
+                className={`shrink-0 rounded-lg px-2.5 py-1 font-medium transition ${
                   filterTab === tab.id
                     ? "bg-zinc-800 text-white"
                     : "text-zinc-400 hover:text-zinc-200"
@@ -937,7 +954,7 @@ export function StudioWorkspace() {
 
   return (
     <div
-      className="min-h-screen bg-zinc-950 text-zinc-100"
+      className="min-h-screen overflow-x-hidden bg-zinc-950 text-zinc-100"
       onDragOver={(e) => {
         e.preventDefault();
         setIsDragging(true);
@@ -972,25 +989,25 @@ export function StudioWorkspace() {
 
       {/* Top Navigation */}
       <header className="sticky top-0 z-30 border-b border-zinc-800/80 bg-zinc-950/85 backdrop-blur-md">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-4 py-3 sm:px-6">
           {/* Clickable Brand -> Main Menu */}
           <button
             type="button"
             onClick={handleGoHome}
             title="Return to main menu"
-            className="group cursor-pointer rounded-xl text-left transition hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+            className="group shrink-0 cursor-pointer rounded-xl text-left transition hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
           >
-            <ClearCutLogo size={38} subtitle="Enter. Cut. Leave." />
+            <ClearCutLogo size={36} subtitle="Enter. Cut. Leave." />
           </button>
 
           {/* Right Header Controls */}
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             {view === "workspace" && jobs.length > 0 && (
               <>
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-medium text-zinc-100 transition hover:border-zinc-600 hover:bg-zinc-800"
+                  className="hidden items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-medium text-zinc-100 transition hover:border-zinc-600 hover:bg-zinc-800 sm:inline-flex"
                 >
                   <Plus className="h-3.5 w-3.5" />
                   Add Images
@@ -1000,7 +1017,7 @@ export function StudioWorkspace() {
                   type="button"
                   onClick={handleClearWorkspace}
                   disabled={isProcessing}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs font-medium text-zinc-400 transition hover:border-zinc-700 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="hidden items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs font-medium text-zinc-400 transition hover:border-zinc-700 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40 sm:inline-flex"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                   Clear
@@ -1010,7 +1027,7 @@ export function StudioWorkspace() {
                   type="button"
                   onClick={() => handleDownloadZip(jobs, "clearcut_batch.zip")}
                   disabled={stats.done === 0 || isZipping || isConvertingFormat}
-                  className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-3.5 py-2 text-xs font-semibold text-zinc-950 shadow-sm transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
+                  className="hidden items-center gap-2 rounded-lg bg-emerald-500 px-3.5 py-2 text-xs font-semibold text-zinc-950 shadow-sm transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500 sm:inline-flex"
                 >
                   {isZipping || isConvertingFormat ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -1038,7 +1055,7 @@ export function StudioWorkspace() {
             <button
               type="button"
               onClick={handleOpenHistory}
-              className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition ${
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-medium transition sm:px-3 ${
                 view === "history"
                   ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-300"
                   : "border-zinc-800 bg-zinc-900 text-zinc-200 hover:border-zinc-700 hover:bg-zinc-800"
@@ -1067,7 +1084,7 @@ export function StudioWorkspace() {
         {view === "history" ? (
           /* Session History View */
           <section className="flex flex-col gap-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="flex items-center gap-2.5">
                   <button
@@ -1083,18 +1100,18 @@ export function StudioWorkspace() {
                   </h1>
                 </div>
                 <p className="mt-1.5 flex items-center gap-1.5 text-xs text-zinc-400">
-                  <Clock className="h-3.5 w-3.5 text-zinc-500" />
+                  <Clock className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
                   Cutouts are kept here in browser memory until you refresh or
                   close this tab.
                 </p>
               </div>
 
               {history.length > 0 && (
-                <div className="flex items-center gap-2">
+                <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
                   <button
                     type="button"
                     onClick={handleClearHistory}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs font-medium text-zinc-400 transition hover:border-zinc-700 hover:text-zinc-200"
+                    className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs font-medium text-zinc-400 transition hover:border-zinc-700 hover:text-zinc-200"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     Clear History
@@ -1105,14 +1122,14 @@ export function StudioWorkspace() {
                     onClick={() =>
                       handleDownloadZip(history, "clearcut_history.zip")
                     }
-                    className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-3.5 py-2 text-xs font-semibold text-zinc-950 transition hover:bg-emerald-400 disabled:opacity-50"
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-500 px-3.5 py-2 text-xs font-semibold text-zinc-950 transition hover:bg-emerald-400 disabled:opacity-50"
                   >
                     {isZipping || isConvertingFormat ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <FileArchive className="h-4 w-4" />
                     )}
-                    Download All ({history.length})
+                    Download ({history.length})
                   </button>
                 </div>
               )}
@@ -1312,7 +1329,43 @@ export function StudioWorkspace() {
           </section>
         ) : (
           /* Active Batch Workspace */
-          <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-4 sm:gap-5">
+            {/* Mobile-only Symmetrical Action Row */}
+            <div className="grid grid-cols-3 gap-2 sm:hidden">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-zinc-700 bg-zinc-900 py-2.5 text-xs font-medium text-zinc-100 transition active:scale-[0.98]"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add
+              </button>
+
+              <button
+                type="button"
+                onClick={handleClearWorkspace}
+                disabled={isProcessing}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-zinc-800 bg-zinc-950 py-2.5 text-xs font-medium text-zinc-400 transition disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Clear
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleDownloadZip(jobs, "clearcut_batch.zip")}
+                disabled={stats.done === 0 || isZipping || isConvertingFormat}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-500 py-2.5 text-xs font-semibold text-zinc-950 transition disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
+              >
+                {isZipping || isConvertingFormat ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <FileArchive className="h-3.5 w-3.5" />
+                )}
+                ZIP{stats.done > 0 ? ` (${stats.done})` : ""}
+              </button>
+            </div>
+
             <div className="flex flex-col gap-3 rounded-2xl border border-zinc-800/80 bg-zinc-900/50 p-3.5 sm:p-4">
               {renderBackdropAndFormatControls(true)}
 
