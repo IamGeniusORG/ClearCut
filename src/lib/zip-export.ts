@@ -36,6 +36,20 @@ export function buildOutputFilename(
   return candidate;
 }
 
+export function resolveBlobFormat(
+  blob: Blob,
+  fallback: OutputFormat
+): OutputFormat {
+  if (
+    blob.type === "image/png" ||
+    blob.type === "image/webp" ||
+    blob.type === "image/jpeg"
+  ) {
+    return blob.type;
+  }
+  return fallback;
+}
+
 export async function createResultsZip(
   jobs: ImageJob[],
   format: OutputFormat
@@ -46,7 +60,8 @@ export async function createResultsZip(
   for (const job of jobs) {
     const blob = job.resultBlob ?? job.cutoutBlob;
     if (job.status !== "done" || !blob) continue;
-    const filename = buildOutputFilename(job.name, format, usedNames);
+    const actualFormat = resolveBlobFormat(blob, format);
+    const filename = buildOutputFilename(job.name, actualFormat, usedNames);
     zip.file(filename, blob);
   }
 

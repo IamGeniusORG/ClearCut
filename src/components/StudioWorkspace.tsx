@@ -24,7 +24,9 @@ import {
 import { ClearCutLogo } from "@/components/ClearCutLogo";
 import { CompareSlider } from "@/components/CompareSlider";
 import {
-  getImageDimensions,
+  getDefaultModelQuality,
+  preloadSegmentationModel,
+  prepareImageForProcessing,
   renderCompositeBlob,
   runSegmentation,
 } from "@/lib/bg-remover";
@@ -33,6 +35,7 @@ import {
   createResultsZip,
   formatBytes,
   formatDuration,
+  resolveBlobFormat,
 } from "@/lib/zip-export";
 import type {
   BackgroundSettings,
@@ -40,13 +43,6 @@ import type {
   ModelQuality,
   OutputFormat,
 } from "@/types/studio";
-
-const ACCEPTED_MIME_TYPES = new Set([
-  "image/jpeg",
-  "image/jpg",
-  "image/png",
-  "image/webp",
-]);
 
 const PRECISION_OPTIONS: Array<{
   id: ModelQuality;
@@ -56,12 +52,12 @@ const PRECISION_OPTIONS: Array<{
   {
     id: "isnet_quint8",
     label: "Fast",
-    hint: "Quickest processing for clean product shots",
+    hint: "Quickest processing — ideal for mobile and clean shots",
   },
   {
     id: "isnet_fp16",
     label: "Balanced",
-    hint: "Recommended default for everyday photos",
+    hint: "Recommended accuracy & speed for general photos",
   },
   {
     id: "isnet",
@@ -81,8 +77,9 @@ type FilterTab = "all" | "done" | "queued" | "error";
 type WorkspaceView = "home" | "workspace" | "history";
 
 function isSupportedImageFile(file: File): boolean {
-  if (ACCEPTED_MIME_TYPES.has(file.type.toLowerCase())) return true;
-  return /\.(jpe?g|png|webp)$/i.test(file.name);
+  const mime = file.type.toLowerCase();
+  if (mime.startsWith("image/") && mime !== "image/svg+xml") return true;
+  return /\.(jpe?g|png|webp|heic|heif|avif|bmp)$/i.test(file.name);
 }
 
 function triggerBlobDownload(blob: Blob, filename: string) {
@@ -101,6 +98,10 @@ function revokeJobUrls(job: ImageJob) {
   if (job.resultUrl) URL.revokeObjectURL(job.resultUrl);
 }
 
+function yieldToMainThread(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 export function StudioWorkspace() {
   const [view, setView] = useState<WorkspaceView>("home");
   const [jobs, setJobs] = useState<ImageJob[]>([]);
@@ -112,6 +113,7 @@ export function StudioWorkspace() {
   });
   const [outputFormat, setOutputFormat] = useState<OutputFormat>("image/png");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isConvertingFormat, setIsConvertingFormat] = useState(false);
   const [isZipping, setIsZipping] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -123,15 +125,23 @@ export function StudioWorkspace() {
   const settingsPopoverRef = useRef<HTMLDivElement>(null);
   const abortRequestedRef = useRef(false);
   const queueRunningRef = useRef(false);
+  const userSelectedModelRef = useRef(false);
+  const autoFilledForJpgRef = useRef(false);
+  const recomputeVersionRef = useRef(0);
 
-  // Synchronous ref mirrors for the background queue loop & unmount cleanup
+  // Synchronous ref mirrors for async queue, format switching, & cleanup
   const jobsRef = useRef<ImageJob[]>([]);
   const historyRef = useRef<ImageJob[]>([]);
+  const viewRef = useRef<WorkspaceView>("home");
   const settingsRef = useRef({ model, background, outputFormat });
 
   useEffect(() => {
     settingsRef.current = { model, background, outputFormat };
   }, [model, background, outputFormat]);
+
+  useEffect(() => {
+    viewRef.current = view;
+  }, [view]);
 
   const updateJobs = useCallback(
     (updater: (prev: ImageJob[]) => ImageJob[]) => {
@@ -150,6 +160,27 @@ export function StudioWorkspace() {
     },
     []
   );
+
+  // Select optimal mobile/desktop precision and warm up AI model in background
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const smartModel = userSelectedModelRef.current
+        ? settingsRef.current.model
+        : getDefaultModelQuality();
+
+      if (
+        !userSelectedModelRef.current &&
+        smartModel !== settingsRef.current.model
+      ) {
+        settingsRef.current = { ...settingsRef.current, model: smartModel };
+        setModel(smartModel);
+      }
+
+      void preloadSegmentationModel(smartModel);
+    }, 150);
+
+    return () => clearTimeout(timer);
+  }, []);
 
   // Close precision popover on outside click
   useEffect(() => {
@@ -200,7 +231,6 @@ export function StudioWorkspace() {
           target.file,
           {
             model: activeModel,
-            device: "gpu",
             onProgress: (percent, stage) => {
               updateJobs((prev) =>
                 prev.map((j) =>
@@ -314,31 +344,41 @@ export function StudioWorkspace() {
 
       if (valid.length === 0) return;
 
-      const newJobs: ImageJob[] = await Promise.all(
-        valid.map(async (file) => {
-          const originalUrl = URL.createObjectURL(file);
-          let width: number | undefined;
-          let height: number | undefined;
+      const preparedJobs = await Promise.all(
+        valid.map(async (file): Promise<ImageJob | null> => {
           try {
-            const dims = await getImageDimensions(file);
-            width = dims.width;
-            height = dims.height;
+            const { processingFile, width, height } =
+              await prepareImageForProcessing(file);
+            return {
+              id: crypto.randomUUID(),
+              file: processingFile,
+              name: file.name || `image-${Date.now()}.png`,
+              sizeBytes: file.size,
+              width,
+              height,
+              originalUrl: URL.createObjectURL(processingFile),
+              status: "queued",
+              progress: 0,
+            };
           } catch {
-            // Non-fatal if browser delays dimension decode
+            return null;
           }
-          return {
-            id: crypto.randomUUID(),
-            file,
-            name: file.name || `image-${Date.now()}.png`,
-            sizeBytes: file.size,
-            width,
-            height,
-            originalUrl,
-            status: "queued",
-            progress: 0,
-          };
         })
       );
+
+      const newJobs = preparedJobs.filter(
+        (job): job is ImageJob => job !== null
+      );
+      if (newJobs.length === 0) {
+        setNotice("Could not decode the selected image(s).");
+        return;
+      }
+
+      if (newJobs.length < valid.length) {
+        setNotice(
+          `Skipped ${valid.length - newJobs.length} unreadable image(s).`
+        );
+      }
 
       updateJobs((prev) => [...prev, ...newJobs]);
       setView("workspace");
@@ -359,74 +399,100 @@ export function StudioWorkspace() {
     return () => window.removeEventListener("paste", handlePaste);
   }, [addFiles]);
 
-  // Re-compose cutouts in both active workspace and History when backdrop or format changes
-  const recomputeListOutputs = useCallback(
-    async (
-      list: ImageJob[],
-      nextBg: BackgroundSettings,
-      nextFormat: OutputFormat
-    ): Promise<Map<string, { resultBlob: Blob; resultUrl: string }>> => {
-      const updates = new Map<string, { resultBlob: Blob; resultUrl: string }>();
-      for (const item of list) {
-        if (item.status !== "done" || !item.cutoutBlob) continue;
-        try {
-          const resultBlob = await renderCompositeBlob(
-            item.cutoutBlob,
-            nextBg,
-            nextFormat
-          );
-          const resultUrl = URL.createObjectURL(resultBlob);
-          updates.set(item.id, { resultBlob, resultUrl });
-        } catch {
-          // Keep existing composite if encoding fails
-        }
-      }
-      return updates;
-    },
-    []
-  );
-
+  // Race-safe, non-blocking re-composition across Workspace & History
   const recomputeOutputs = useCallback(
     async (nextBg: BackgroundSettings, nextFormat: OutputFormat) => {
-      const [jobUpdates, historyUpdates] = await Promise.all([
-        recomputeListOutputs(jobsRef.current, nextBg, nextFormat),
-        recomputeListOutputs(historyRef.current, nextBg, nextFormat),
-      ]);
+      const version = ++recomputeVersionRef.current;
 
-      if (jobUpdates.size > 0) {
+      const recomputeTargetList = async (
+        list: ImageJob[],
+        applyUpdate: (
+          id: string,
+          resultBlob: Blob,
+          resultUrl: string
+        ) => void
+      ) => {
+        for (let i = 0; i < list.length; i += 1) {
+          if (version !== recomputeVersionRef.current) return;
+          const item = list[i];
+          if (item.status !== "done" || !item.cutoutBlob) continue;
+
+          try {
+            const resultBlob = await renderCompositeBlob(
+              item.cutoutBlob,
+              nextBg,
+              nextFormat
+            );
+            // Discard stale work if user tapped another format while encoding
+            if (version !== recomputeVersionRef.current) return;
+            const resultUrl = URL.createObjectURL(resultBlob);
+            applyUpdate(item.id, resultBlob, resultUrl);
+          } catch {
+            // Keep existing composite if encoding fails
+          }
+
+          if (i < list.length - 1) {
+            await yieldToMainThread();
+          }
+        }
+      };
+
+      const applyJobUpdate = (
+        id: string,
+        resultBlob: Blob,
+        resultUrl: string
+      ) => {
         updateJobs((prev) =>
           prev.map((job) => {
-            const updated = jobUpdates.get(job.id);
-            if (!updated) return job;
+            if (job.id !== id) return job;
             if (job.resultUrl) URL.revokeObjectURL(job.resultUrl);
-            return {
-              ...job,
-              resultBlob: updated.resultBlob,
-              resultUrl: updated.resultUrl,
-            };
+            return { ...job, resultBlob, resultUrl };
           })
         );
-      }
+      };
 
-      if (historyUpdates.size > 0) {
+      const applyHistoryUpdate = (
+        id: string,
+        resultBlob: Blob,
+        resultUrl: string
+      ) => {
         updateHistory((prev) =>
           prev.map((item) => {
-            const updated = historyUpdates.get(item.id);
-            if (!updated) return item;
+            if (item.id !== id) return item;
             if (item.resultUrl) URL.revokeObjectURL(item.resultUrl);
-            return {
-              ...item,
-              resultBlob: updated.resultBlob,
-              resultUrl: updated.resultUrl,
-            };
+            return { ...item, resultBlob, resultUrl };
           })
         );
+      };
+
+      const hasDoneWork =
+        jobsRef.current.some((j) => j.status === "done" && j.cutoutBlob) ||
+        historyRef.current.some((h) => h.status === "done" && h.cutoutBlob);
+      if (!hasDoneWork) return;
+
+      setIsConvertingFormat(true);
+      try {
+        // Prioritize whichever view the user is currently looking at
+        if (viewRef.current === "history") {
+          await recomputeTargetList(historyRef.current, applyHistoryUpdate);
+          if (version !== recomputeVersionRef.current) return;
+          await recomputeTargetList(jobsRef.current, applyJobUpdate);
+        } else {
+          await recomputeTargetList(jobsRef.current, applyJobUpdate);
+          if (version !== recomputeVersionRef.current) return;
+          await recomputeTargetList(historyRef.current, applyHistoryUpdate);
+        }
+      } finally {
+        if (version === recomputeVersionRef.current) {
+          setIsConvertingFormat(false);
+        }
       }
     },
-    [recomputeListOutputs, updateHistory, updateJobs]
+    [updateHistory, updateJobs]
   );
 
   const handleBackgroundChange = (nextBg: BackgroundSettings) => {
+    autoFilledForJpgRef.current = false;
     setBackground(nextBg);
     const nextFormat =
       nextBg.mode === "transparent" && outputFormat === "image/jpeg"
@@ -435,22 +501,45 @@ export function StudioWorkspace() {
     if (nextFormat !== outputFormat) {
       setOutputFormat(nextFormat);
     }
+    settingsRef.current = {
+      ...settingsRef.current,
+      background: nextBg,
+      outputFormat: nextFormat,
+    };
     void recomputeOutputs(nextBg, nextFormat);
   };
 
   const handleFormatChange = (nextFormat: OutputFormat) => {
-    setOutputFormat(nextFormat);
     let nextBg = background;
-    if (nextFormat === "image/jpeg" && background.mode === "transparent") {
-      nextBg = { mode: "color", color: background.color || "#ffffff" };
+
+    if (nextFormat === "image/jpeg") {
+      if (background.mode === "transparent") {
+        autoFilledForJpgRef.current = true;
+        nextBg = { mode: "color", color: background.color || "#ffffff" };
+        setBackground(nextBg);
+      }
+    } else if (autoFilledForJpgRef.current) {
+      // Restore transparent no-bg automatically when leaving JPG for PNG/WebP
+      autoFilledForJpgRef.current = false;
+      nextBg = { mode: "transparent", color: background.color };
       setBackground(nextBg);
     }
+
+    setOutputFormat(nextFormat);
+    settingsRef.current = {
+      ...settingsRef.current,
+      background: nextBg,
+      outputFormat: nextFormat,
+    };
     void recomputeOutputs(nextBg, nextFormat);
   };
 
   const handlePrecisionChange = (nextModel: ModelQuality) => {
+    userSelectedModelRef.current = true;
     setModel(nextModel);
+    settingsRef.current = { ...settingsRef.current, model: nextModel };
     setSettingsOpen(false);
+    void preloadSegmentationModel(nextModel);
   };
 
   const handleReprocessAll = () => {
@@ -486,7 +575,6 @@ export function StudioWorkspace() {
   };
 
   const handleGoHome = () => {
-    // Stop any queued items and return cleanly to the main menu; completed cutouts stay in History
     abortRequestedRef.current = true;
     for (const job of jobsRef.current) {
       if (job.status !== "processing") {
@@ -549,12 +637,13 @@ export function StudioWorkspace() {
   const handleDownloadSingle = (job: ImageJob) => {
     const blob = job.resultBlob ?? job.cutoutBlob;
     if (!blob) return;
-    triggerBlobDownload(blob, buildOutputFilename(job.name, outputFormat));
+    const actualFormat = resolveBlobFormat(blob, outputFormat);
+    triggerBlobDownload(blob, buildOutputFilename(job.name, actualFormat));
   };
 
   const handleDownloadZip = async (sourceJobs: ImageJob[], filename: string) => {
     const doneJobs = sourceJobs.filter((j) => j.status === "done");
-    if (doneJobs.length === 0 || isZipping) return;
+    if (doneJobs.length === 0 || isZipping || isConvertingFormat) return;
     setIsZipping(true);
     try {
       const zipBlob = await createResultsZip(doneJobs, outputFormat);
@@ -616,7 +705,11 @@ export function StudioWorkspace() {
             <button
               type="button"
               disabled={outputFormat === "image/jpeg"}
-              title="Transparent background"
+              title={
+                outputFormat === "image/jpeg"
+                  ? "Transparency requires PNG or WebP"
+                  : "Transparent background"
+              }
               aria-label="Transparent background"
               onClick={() =>
                 handleBackgroundChange({
@@ -716,6 +809,12 @@ export function StudioWorkspace() {
               </button>
             ))}
           </div>
+          {isConvertingFormat && (
+            <Loader2
+              aria-label="Updating output format"
+              className="h-3.5 w-3.5 animate-spin text-emerald-400"
+            />
+          )}
         </div>
       </div>
 
@@ -860,7 +959,7 @@ export function StudioWorkspace() {
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/jpeg,image/png,image/webp"
+        accept="image/*"
         multiple
         className="hidden"
         onChange={(e) => {
@@ -910,10 +1009,10 @@ export function StudioWorkspace() {
                 <button
                   type="button"
                   onClick={() => handleDownloadZip(jobs, "clearcut_batch.zip")}
-                  disabled={stats.done === 0 || isZipping}
+                  disabled={stats.done === 0 || isZipping || isConvertingFormat}
                   className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-3.5 py-2 text-xs font-semibold text-zinc-950 shadow-sm transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
                 >
-                  {isZipping ? (
+                  {isZipping || isConvertingFormat ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <FileArchive className="h-4 w-4" />
@@ -1002,13 +1101,13 @@ export function StudioWorkspace() {
                   </button>
                   <button
                     type="button"
-                    disabled={isZipping}
+                    disabled={isZipping || isConvertingFormat}
                     onClick={() =>
                       handleDownloadZip(history, "clearcut_history.zip")
                     }
                     className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-3.5 py-2 text-xs font-semibold text-zinc-950 transition hover:bg-emerald-400 disabled:opacity-50"
                   >
-                    {isZipping ? (
+                    {isZipping || isConvertingFormat ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <FileArchive className="h-4 w-4" />
@@ -1088,7 +1187,7 @@ export function StudioWorkspace() {
                               handleRemoveHistoryItem(item.id);
                             }}
                             aria-label={`Remove ${item.name} from history`}
-                            className="absolute top-2.5 right-2.5 rounded-lg border border-zinc-700/70 bg-zinc-950/80 p-1.5 text-zinc-400 opacity-0 backdrop-blur-sm transition group-hover:opacity-100 hover:border-rose-500/50 hover:text-rose-400"
+                            className="absolute top-2.5 right-2.5 rounded-lg border border-zinc-700/70 bg-zinc-950/80 p-1.5 text-zinc-400 opacity-100 backdrop-blur-sm transition sm:opacity-0 sm:group-hover:opacity-100 hover:border-rose-500/50 hover:text-rose-400"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
@@ -1124,8 +1223,9 @@ export function StudioWorkspace() {
                             </button>
                             <button
                               type="button"
+                              disabled={isConvertingFormat}
                               onClick={() => handleDownloadSingle(item)}
-                              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-500/15 py-1.5 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/25"
+                              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-500/15 py-1.5 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/25 disabled:opacity-50"
                             >
                               <Download className="h-3.5 w-3.5" />
                               Save
@@ -1187,18 +1287,14 @@ export function StudioWorkspace() {
             <div className="mt-8 grid w-full grid-cols-1 gap-3 text-left sm:grid-cols-3">
               <div className="rounded-2xl border border-zinc-800/70 bg-zinc-900/30 p-4">
                 <UploadCloud className="mb-2 h-4 w-4 text-emerald-400" />
-                <p className="text-xs font-semibold text-zinc-100">
-                  1. Enter
-                </p>
+                <p className="text-xs font-semibold text-zinc-100">1. Enter</p>
                 <p className="mt-1 text-xs text-zinc-400">
                   Drop, browse, or paste one photo or a full batch in seconds.
                 </p>
               </div>
               <div className="rounded-2xl border border-zinc-800/70 bg-zinc-900/30 p-4">
                 <Sparkles className="mb-2 h-4 w-4 text-emerald-400" />
-                <p className="text-xs font-semibold text-zinc-100">
-                  2. Cut
-                </p>
+                <p className="text-xs font-semibold text-zinc-100">2. Cut</p>
                 <p className="mt-1 text-xs text-zinc-400">
                   Automatic AI cutouts with instant transparent or solid
                   backdrops.
@@ -1206,9 +1302,7 @@ export function StudioWorkspace() {
               </div>
               <div className="rounded-2xl border border-zinc-800/70 bg-zinc-900/30 p-4">
                 <Download className="mb-2 h-4 w-4 text-emerald-400" />
-                <p className="text-xs font-semibold text-zinc-100">
-                  3. Leave
-                </p>
+                <p className="text-xs font-semibold text-zinc-100">3. Leave</p>
                 <p className="mt-1 text-xs text-zinc-400">
                   Save individual cutouts or one clean ZIP—nothing stored on
                   servers.
@@ -1303,7 +1397,7 @@ export function StudioWorkspace() {
                           handleRemoveJob(job.id);
                         }}
                         aria-label={`Remove ${job.name}`}
-                        className="absolute top-2.5 right-2.5 rounded-lg border border-zinc-700/70 bg-zinc-950/80 p-1.5 text-zinc-400 opacity-0 backdrop-blur-sm transition group-hover:opacity-100 hover:border-rose-500/50 hover:text-rose-400 disabled:pointer-events-none"
+                        className="absolute top-2.5 right-2.5 rounded-lg border border-zinc-700/70 bg-zinc-950/80 p-1.5 text-zinc-400 opacity-100 backdrop-blur-sm transition sm:opacity-0 sm:group-hover:opacity-100 hover:border-rose-500/50 hover:text-rose-400 disabled:pointer-events-none"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -1361,8 +1455,9 @@ export function StudioWorkspace() {
                             </button>
                             <button
                               type="button"
+                              disabled={isConvertingFormat}
                               onClick={() => handleDownloadSingle(job)}
-                              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-500/15 py-1.5 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/25"
+                              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-500/15 py-1.5 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/25 disabled:opacity-50"
                             >
                               <Download className="h-3.5 w-3.5" />
                               Save

@@ -146,7 +146,7 @@ export function CompareSlider({
             style={cutoutBackdropStyle}
             className={`relative select-none overflow-hidden rounded-xl border border-zinc-800 ${
               background.mode === "transparent" ? "checkerboard" : ""
-            } ${viewMode === "split" ? "cursor-ew-resize" : ""}`}
+            } ${viewMode === "split" ? "cursor-ew-resize touch-none" : ""}`}
           >
             {/* Base layer: Processed cutout */}
             <img
